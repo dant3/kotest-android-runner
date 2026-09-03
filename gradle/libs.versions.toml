@@ -1,0 +1,28 @@
+[versions]
+kotlinVersion = "2.2.21"
+kotestVersion = "6.2.4"
+junit4Version = "4.13.2"
+androidxTestCore = "1.7.0"
+androidxTestMonitor = "1.8.0"
+androidxTestRunner = "1.7.0"
+androidxTestRules = "1.7.0"
+agpVersion = "9.2.0"
+androidCompileSdk = "36"
+androidMinSdk = "23"
+detektVersion = "1.23.8"
+
+[plugins]
+android-library = { id = "com.android.library", version.ref = "agpVersion" }
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detektVersion" }
+
+[libraries]
+kotest-framework-engine = { module = "io.kotest:kotest-framework-engine", version.ref = "kotestVersion" }
+kotest-assertions-core = { module = "io.kotest:kotest-assertions-core", version.ref = "kotestVersion" }
+junit4 = { module = "junit:junit", version.ref = "junit4Version" }
+kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect", version.ref = "kotlinVersion" }
+androidx-test-monitor = { module = "androidx.test:monitor", version.ref = "androidxTestMonitor" }
+androidx-test-core = { module = "androidx.test:core", version.ref = "androidxTestCore" }
+androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTestRunner" }
+androidx-test-rules = { module = "androidx.test:rules", version.ref = "androidxTestRules" }
+
+gradlePlugin-detekt-formatting = { module = "io.gitlab.arturbosch.detekt:detekt-formatting", version.ref = "detektVersion" }
