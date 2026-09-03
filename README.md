@@ -77,7 +77,7 @@ android {
 }
 
 dependencies {
-    androidTestImplementation("com.github.dant3:kotest-android-runner:0.1.0")
+    androidTestImplementation("com.github.dant3:kotest-android-runner:1.0.0")
 }
 ```
 
@@ -88,14 +88,14 @@ along transitively — see [What comes with the dependency](#what-comes-with-the
 
 ```toml
 [libraries]
-kotest-android-runner = { module = "com.github.dant3:kotest-android-runner", version = "0.1.0" }
+kotest-android-runner = { module = "com.github.dant3:kotest-android-runner", version = "1.0.0" }
 ```
 
 The version slot accepts any of:
 
 | Value | Meaning |
 |---|---|
-| `0.1.0` | a release tag — pinned, reproducible, recommended |
+| `1.0.0` | a release tag — pinned, reproducible, recommended |
 | `abc1234` | a short commit SHA — pinned to a specific commit |
 | `main-SNAPSHOT` | latest commit on `main` — handy for trying unreleased fixes, not for CI |
 
