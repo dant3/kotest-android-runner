@@ -131,21 +131,12 @@ class ContextTest : FunSpec({
 Every Kotest style works — `FunSpec`, `StringSpec`, `ShouldSpec`, `DescribeSpec`, `BehaviorSpec`,
 `FreeSpec`, `WordSpec`, `FeatureSpec`, `ExpectSpec` — the library adds no spec classes of its own.
 
-Tired of repeating the annotation? `@RunWith` is `@Inherited`, so declare one base spec in your own
-project and extend it:
-
-```kotlin
-@RunWith(KotestAndroidRunner::class)
-abstract class AndroidFunSpec(body: FunSpec.() -> Unit = {}) : FunSpec(body)
-
-class ContextTest : AndroidFunSpec({ /* ... */ })
-```
-
-> **Why not a single `@AndroidTest` meta-annotation?** Because JUnit 4 does not look for `@RunWith`
-> through other annotations — `AnnotatedBuilder` calls `getAnnotation(RunWith.class)` on the test class
-> itself. An annotation that merely carries `@RunWith` fails at discovery with
-> `Invalid test class: No test methods found`. Inheritance works (the annotation is `@Inherited`),
-> meta-annotation does not.
+> **Why one annotation per spec, and not a single `@AndroidTest` meta-annotation?** JUnit 4 does not
+> look for `@RunWith` through other annotations — `AnnotatedBuilder` calls `getAnnotation(RunWith.class)`
+> on the test class itself, so an annotation that merely carries `@RunWith` fails discovery with
+> `Invalid test class: No test methods found`. Inheritance does work (`@RunWith` is `@Inherited`), so a
+> project that really wants to drop the per-spec annotation can extend its own annotated base spec —
+> at the cost of hiding the runner one level away from the test.
 
 Then run them the usual way — no extra Gradle wiring:
 
