@@ -13,6 +13,7 @@ It is the on-device counterpart to
 code on the JVM inside a Robolectric sandbox.
 
 ```kotlin
+@RunWith(KotestAndroidRunner::class)
 class ContextTest : FunSpec({
     test("runs on the device, against the real framework") {
         targetContext.packageName shouldBe "com.example.app"
@@ -110,14 +111,16 @@ request, so the very first resolution of a new tag can take a couple of minutes.
 
 ## Quick start
 
-Extend one of the spec styles from `io.github.dant3.kotest.android` — they carry
-`@RunWith(KotestAndroidRunner::class)` already:
+Write an ordinary Kotest spec — any style — and point JUnit at the runner:
 
 ```kotlin
-import io.github.dant3.kotest.android.FunSpec
+import io.github.dant3.kotest.android.KotestAndroidRunner
 import io.github.dant3.kotest.android.targetContext
+import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import org.junit.runner.RunWith
 
+@RunWith(KotestAndroidRunner::class)
 class ContextTest : FunSpec({
     test("runs on the device, against the real framework") {
         targetContext.packageName shouldBe "com.example.app"
@@ -125,19 +128,24 @@ class ContextTest : FunSpec({
 })
 ```
 
-All nine styles are available: `BehaviorSpec`, `DescribeSpec`, `ExpectSpec`, `FeatureSpec`, `FreeSpec`,
-`FunSpec`, `ShouldSpec`, `StringSpec`, `WordSpec`.
+Every Kotest style works — `FunSpec`, `StringSpec`, `ShouldSpec`, `DescribeSpec`, `BehaviorSpec`,
+`FreeSpec`, `WordSpec`, `FeatureSpec`, `ExpectSpec` — the library adds no spec classes of its own.
 
-Prefer the stock Kotest classes? Put the runner on the spec yourself:
+Tired of repeating the annotation? `@RunWith` is `@Inherited`, so declare one base spec in your own
+project and extend it:
 
 ```kotlin
-import io.github.dant3.kotest.android.KotestAndroidRunner
-import io.kotest.core.spec.style.FunSpec
-import org.junit.runner.RunWith
-
 @RunWith(KotestAndroidRunner::class)
-class ContextTest : FunSpec({ /* ... */ })
+abstract class AndroidFunSpec(body: FunSpec.() -> Unit = {}) : FunSpec(body)
+
+class ContextTest : AndroidFunSpec({ /* ... */ })
 ```
+
+> **Why not a single `@AndroidTest` meta-annotation?** Because JUnit 4 does not look for `@RunWith`
+> through other annotations — `AnnotatedBuilder` calls `getAnnotation(RunWith.class)` on the test class
+> itself. An annotation that merely carries `@RunWith` fails at discovery with
+> `Invalid test class: No test methods found`. Inheritance works (the annotation is `@Inherited`),
+> meta-annotation does not.
 
 Then run them the usual way — no extra Gradle wiring:
 
@@ -154,6 +162,7 @@ JUnit 4 has a flat `class#method` model, while Kotest tests form a tree. Nested 
 **flattened into the reported method name**, joined with ` -- `:
 
 ```kotlin
+@RunWith(KotestAndroidRunner::class)
 class NestedScopesTest : FunSpec({
     context("nested scopes") {
         context("deeper") {
@@ -218,6 +227,7 @@ Kotest test bodies run on the instrumentation thread, so anything main-thread-co
 dispatched explicitly — with `onMainThread`, or through `ActivityScenario.onActivity`:
 
 ```kotlin
+@RunWith(KotestAndroidRunner::class)
 class ActivityTest : FunSpec({
     test("shows the greeting") {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->

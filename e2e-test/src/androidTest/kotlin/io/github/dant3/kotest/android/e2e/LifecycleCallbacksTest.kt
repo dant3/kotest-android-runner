@@ -1,9 +1,12 @@
 package io.github.dant3.kotest.android.e2e
 
-import io.github.dant3.kotest.android.FunSpec
+import io.github.dant3.kotest.android.KotestAndroidRunner
+import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import org.junit.runner.RunWith
 
 /** Kotest lifecycle callbacks must fire on device exactly as they do on the JVM. */
+@RunWith(KotestAndroidRunner::class)
 class LifecycleCallbacksTest : FunSpec({
 
     val events = mutableListOf<String>()
