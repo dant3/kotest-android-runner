@@ -237,10 +237,43 @@ dependencies {
 ```
 
 The orchestrator lists the tests first, then runs each listed name in a process of its own, selected by
-name as described [above](#running-a-single-test). Only the **root tests** of a spec can be listed without
-running it, so the unit the orchestrator isolates is a root test: a root `context` runs as a whole in one
-process and shows up in the report as one test, with every failure inside it in the message. Tests that
-must share state — a spec-level variable, `beforeSpec` setup — belong in one root container.
+name as described [above](#running-a-single-test). **Every test and every `withData` row gets a process
+and a line in the report of its own**, however deeply it is nested:
+
+```kotlin
+@RunWith(KotestAndroidRunner::class)
+class TransliterationTest : FunSpec({
+    context("transliteration") {
+        withData("Мария", "Пётр", "Юлия") { name ->   // three tests, three processes
+            // ...
+        }
+    }
+})
+```
+
+Nested tests only exist once their container's body has run, so to list them the runner runs the bodies
+of plain containers (`context`, `describe`, `given`, …) during listing, against a scope that records what
+they register without running any of it — the same thing that already happens to the spec's constructor.
+`withData` rows are recognised by the tag Kotest puts on them and are never run while listing: a row's body
+is the test. What that means in practice:
+
+- **Container bodies should only register tests.** One that does more — writes a file, starts an
+  activity — does it once more, in the listing process. With `clearPackageData` the orchestrator wipes that
+  before the first test; without it, the leftovers are visible to the tests.
+- **A container that cannot be listed runs as one test.** If its body fails outside the spec's lifecycle
+  (it reads something `beforeSpec` sets up), takes longer than 10 seconds, registers two tests with the
+  same name, or is disabled, the container is listed as a whole: it runs in one process and is reported as
+  one test, with every failure inside it in the message. Nothing is lost, only isolation is coarser.
+- **Listed names must be reproducible.** A test name that changes between processes — `withData` over
+  random or time-dependent values — is not found when the orchestrator asks for it, and fails with
+  `… has no test named '…'`.
+- **Tests must not depend on each other.** Each one runs in a fresh process, with only its parent
+  containers' bodies and callbacks run before it.
+- **A process per row has a cost.** The spec constructor, `beforeSpec` and the enclosing containers run
+  again for every row; a table of a hundred rows is a hundred instrumentation runs.
+
+Only listing for the orchestrator (`listTestsForOrchestrator`) or a dry run (`-e log true`, which tools like
+Marathon use to list tests) expands containers; an ordinary run does not.
 
 ## Instrumentation helpers
 
@@ -322,8 +355,9 @@ Known gaps, roughly in the order they are worth closing:
   at class level only — Kotest tests are not methods, so per-test annotations have nowhere to live.
 - **Only root tests are known before a spec runs.** Whether a container holds tests or *is* one (a
   `withData` row) shows only once its body runs, so the runner announces root tests and reports nested
-  ones as it discovers them. Hence the `Tests found` / `Tests run` mismatch in unfiltered runs, sharding
-  (`numShards`) that distributes root tests rather than leaves, and orchestrator isolation per root test.
+  ones as it discovers them. Hence the `Tests found` / `Tests run` mismatch in unfiltered runs, and sharding
+  (`numShards`) that distributes root tests rather than leaves. Listing for the orchestrator is the
+  exception, see [Android Test Orchestrator](#android-test-orchestrator).
 - **Discovery instantiates the spec.** The spec body therefore runs once for discovery and once for
   execution; keep expensive work out of the constructor and in `beforeSpec`.
 

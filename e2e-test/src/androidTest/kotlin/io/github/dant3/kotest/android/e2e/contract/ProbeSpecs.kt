@@ -78,3 +78,17 @@ class ContainerFailingEarlySpec : FunSpec({
         error("boom before any test is registered")
     }
 })
+
+class NeedsBeforeSpecSpec : FunSpec({
+    lateinit var cases: List<Int>
+
+    beforeSpec { cases = listOf(1, 2) }
+
+    context("cases from beforeSpec") {
+        cases.forEach { case ->
+            test("case $case") {
+                Executions.record("case $case")
+            }
+        }
+    }
+})

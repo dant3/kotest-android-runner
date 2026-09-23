@@ -7,6 +7,8 @@ import io.github.dant3.kotest.android.internal.TestRequest
 import io.github.dant3.kotest.android.internal.TestSelection
 import io.github.dant3.kotest.android.internal.describeSpec
 import io.github.dant3.kotest.android.internal.describeTest
+import io.github.dant3.kotest.android.internal.isListingTests
+import io.github.dant3.kotest.android.internal.listTestPaths
 import io.github.dant3.kotest.android.internal.testPath
 import io.kotest.common.KotestInternal
 import io.kotest.core.spec.Spec
@@ -50,9 +52,10 @@ public class KotestAndroidRunner(
         // `-e class Spec#a -- b` can select a nested test, which cannot be enumerated without running
         // the spec. JUnit drops a runner whose description has no matching child *before* it ever
         // calls `filter`, so selected names are announced as-is and reconciled at run time.
-        // Otherwise the root tests are announced — the most that is known before running: whether
-        // a container holds tests or is a test (a `withData` row) only shows once its body runs.
-        val names = request.announced.ifEmpty { rootTestPaths() }
+        // Otherwise the root tests are announced — the most that is known without running container
+        // bodies. A tool that runs every listed name in isolation (the orchestrator) gets the tree
+        // expanded down to single tests and `withData` rows, so that each of them gets a process.
+        val names = request.announced.ifEmpty { testPaths(expand = isListingTests()) }
         names.forEach { description.addChild(describeTest(specClass, it)) }
         description
     }
@@ -82,10 +85,11 @@ public class KotestAndroidRunner(
      * A spec that cannot even be instantiated is announced under the name its failure will be
      * reported with once it runs, so the failure is not lost to the discovery step.
      */
-    private fun rootTestPaths(): List<String> = runBlocking {
+    private fun testPaths(expand: Boolean): List<String> = runBlocking {
         val spec = SpecInstantiator(DefaultExtensionRegistry(), ProjectConfigResolver())
             .createAndInitializeSpec(specClass.kotlin)
             .getOrElse { return@runBlocking listOf(SPEC_FAILURE_NAME) }
-        Materializer().materialize(spec, specRef).map { it.descriptor.testPath() }
+        val roots = Materializer().materialize(spec, specRef)
+        if (expand) listTestPaths(roots) else roots.map { it.descriptor.testPath() }
     }
 }

@@ -15,15 +15,13 @@ class LifecycleCallbacksTest : FunSpec({
     beforeTest { events += "beforeTest" }
     afterTest { events += "afterTest" }
 
-    // One root container, so that Android Test Orchestrator — which runs every root test in a
-    // process of its own — still runs both tests, in order, against the same spec instance.
-    context("callbacks") {
-        test("first test sees beforeSpec and beforeTest") {
-            events shouldBe listOf("beforeSpec", "beforeTest", "beforeTest")
-        }
+    // Every test runs on its own under the orchestrator, so none may rely on another having run.
+    test("beforeSpec and beforeTest run before the test") {
+        events.take(2) shouldBe listOf("beforeSpec", "beforeTest")
+        events.last() shouldBe "beforeTest"
+    }
 
-        test("second test sees the first test's afterTest") {
-            events shouldBe listOf("beforeSpec", "beforeTest", "beforeTest", "afterTest", "beforeTest")
-        }
+    test("afterTest runs after each test") {
+        events.count { it == "afterTest" } shouldBe events.count { it == "beforeTest" } - 1
     }
 })

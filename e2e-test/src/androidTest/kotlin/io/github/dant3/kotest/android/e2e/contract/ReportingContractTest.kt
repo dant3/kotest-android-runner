@@ -124,10 +124,53 @@ class ReportingContractTest : FunSpec({
             run.failures.single().message shouldContain "has no test named 'no such test'"
         }
 
+        test("a listed withData row runs alone and is reported under its own name") {
+            run(FailingTableInContextSpec::class, "ctx -- row 1").events shouldContainExactly listOf(
+                "started: ctx -- row 1", "failed: ctx -- row 1", "finished: ctx -- row 1",
+            )
+            Executions.of("row 2") shouldBe 0
+        }
+
         test("a test under a container that failed early reports that failure") {
             val run = run(ContainerFailingEarlySpec::class, "broken -- anything")
             run.failed shouldContainExactly listOf("broken -- anything")
             run.failures.single().message shouldContain "'broken' failed"
+        }
+    }
+
+    context("listing for the orchestrator expands containers down to single tests") {
+        test("withData rows under a context are listed one by one, without running them") {
+            listed(FailingTableInContextSpec::class) shouldContainExactly listOf("ctx -- row 1", "ctx -- row 2")
+            Executions.of("row 1") shouldBe 0
+        }
+
+        test("leaves and disabled tests are listed, and nothing runs") {
+            listed(MixedSpec::class) shouldContainExactly listOf(
+                "root leaf", "group -- passes", "group -- disabled", "all disabled -- nothing runs",
+            )
+            Executions.of("root leaf") shouldBe 0
+            Executions.of("passes") shouldBe 0
+        }
+
+        test("root withData rows are listed as they are") {
+            listed(PassingTableSpec::class) shouldContainExactly listOf("row 1", "row 2")
+            Executions.of("row 1") shouldBe 0
+        }
+
+        test("a container whose body fails outside the spec lifecycle is listed whole") {
+            listed(NeedsBeforeSpecSpec::class) shouldContainExactly listOf("cases from beforeSpec")
+            listed(ContainerFailingEarlySpec::class) shouldContainExactly listOf("broken")
+        }
+
+        test("a container listed whole still runs every test inside it") {
+            run(NeedsBeforeSpecSpec::class, "cases from beforeSpec").passed shouldContainExactly
+                listOf("cases from beforeSpec")
+            Executions.of("case 1") shouldBe 1
+            Executions.of("case 2") shouldBe 1
+        }
+
+        test("a plain run still announces root tests only") {
+            run(FailingTableInContextSpec::class).announced shouldContainExactly listOf("ctx")
         }
     }
 })
@@ -170,10 +213,17 @@ private fun run(
     RecordedRun(announced, events, failures)
 }
 
-private fun <T> withClassArgument(classArgument: String?, block: () -> T): T {
+/** What the runner announces for [spec] when AndroidJUnitRunner lists tests for the orchestrator. */
+private fun listed(spec: KClass<out Spec>): List<String> = withArguments("class" to null, "listTestsForOrchestrator" to "true") {
+    KotestAndroidRunner(spec.java).description.children.map { it.methodName }
+}
+
+private fun <T> withClassArgument(classArgument: String?, block: () -> T): T = withArguments("class" to classArgument, block = block)
+
+private fun <T> withArguments(vararg overrides: Pair<String, String?>, block: () -> T): T {
     val original = InstrumentationRegistry.getArguments()
     val arguments = Bundle(original).apply {
-        if (classArgument == null) remove("class") else putString("class", classArgument)
+        overrides.forEach { (key, value) -> if (value == null) remove(key) else putString(key, value) }
     }
     InstrumentationRegistry.registerInstance(instrumentation, arguments)
     try {
