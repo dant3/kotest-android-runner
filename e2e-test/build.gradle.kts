@@ -3,6 +3,10 @@ plugins {
     alias(libs.plugins.detekt)
 }
 
+// `-Pe2e.orchestrator` runs the suite under Android Test Orchestrator — one instrumentation per
+// test, each selected by name — which exercises a different reporting path than a plain run.
+val useOrchestrator = providers.gradleProperty("e2e.orchestrator").isPresent
+
 android {
     namespace = "io.github.dant3.kotest.android.e2e"
     compileSdk = libs.versions.androidCompileSdk.get().toInt()
@@ -10,6 +14,11 @@ android {
     defaultConfig {
         minSdk = libs.versions.androidMinSdk.get().toInt()
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        if (useOrchestrator) testInstrumentationRunnerArguments["clearPackageData"] = "true"
+    }
+
+    if (useOrchestrator) {
+        testOptions.execution = "ANDROIDX_TEST_ORCHESTRATOR"
     }
 
     packaging {
@@ -42,6 +51,7 @@ dependencies {
     androidTestImplementation(project(":kotest-android-runner"))
     androidTestImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.test.rules)
+    androidTestUtil(libs.androidx.test.orchestrator)
 
     detektPlugins(libs.gradlePlugin.detekt.formatting)
 }

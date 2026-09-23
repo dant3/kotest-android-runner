@@ -27,6 +27,7 @@ class ContextTest : FunSpec({
 - [Quick start](#quick-start)
 - [How Kotest tests map onto JUnit 4](#how-kotest-tests-map-onto-junit-4)
 - [Running a single test](#running-a-single-test)
+- [Android Test Orchestrator](#android-test-orchestrator)
 - [Instrumentation helpers](#instrumentation-helpers)
 - [What comes with the dependency](#what-comes-with-the-dependency)
 - [Minification](#minification)
@@ -171,9 +172,13 @@ io.example.NestedScopesTest > nested scopes -- deeper -- reports every leaf
 
 Rules of the mapping:
 
-- **Only leaves are reported as tests.** Containers are structure, not results.
-- **A container that fails before producing any leaf** (an exception in the container body) is surfaced
-  as a failure under the container's own name, so it cannot silently vanish from the report.
+- **Every test without children is reported as a test.** That is every leaf, and also every container
+  that registers nothing — which is what a `withData` row is in Kotest 6: `withData` creates containers,
+  and the row's body is the test (`parity -- 2`). Such a row is only recognised once it finishes, so it is
+  reported then, with no meaningful duration of its own.
+- **Containers with children are structure, not results.** A container that fails or is disabled
+  itself — an exception in its body, a failing `afterContainer`, `xcontext` — is reported under its own
+  name, so it cannot silently vanish from the report.
 - **A spec that fails during instantiation or `beforeSpec`** is reported as `spec initialization`.
 - **Disabled tests** (`xtest`, `config(enabled = false)`) are reported as ignored, not as passes.
 
@@ -195,11 +200,47 @@ adb shell "am instrument -w -e class 'io.example.NestedScopesTest#nested scopes 
   com.example.app.test/androidx.test.runner.AndroidJUnitRunner"
 ```
 
+**A selected name is reported as exactly one test**, whatever it names:
+
+- a test — it runs on its own; sibling tests (and sibling `withData` rows) do not run;
+- a container — everything in it runs, and it is reported as a single test that fails if anything inside
+  fails, with every failure listed in the message (`nested scopes -- deeper`);
+- nothing — a typo, or a name that no longer exists — it fails with `… has no test named '…'` rather than
+  passing with zero tests.
+
 Nested tests only come into existence once a spec runs, and JUnit discards a runner whose description
 has no matching child *before* it ever calls `filter`. The runner therefore reads the instrumentation's
-`class` argument and announces the selected names up front, then reconciles them at run time. Containers
-always execute (they have to, to reach their leaves); leaves that were not selected are skipped and left
-out of the report.
+`class` argument and announces the selected names up front, then reconciles them at run time.
+
+AndroidJUnitRunner splits the `class` argument on commas, so a name like `row 1, 2` reaches the runner
+in pieces. The runner reassembles it — a comma only separates entries when a class name follows it — but
+AndroidJUnitRunner still tries to load the tail (` 2`) as a class and reports an `initializationError`
+for it. Keep bare commas out of test names you intend to select by hand; under the orchestrator, which
+discards such errors, they work as they are.
+
+## Android Test Orchestrator
+
+Supported, including `clearPackageData`:
+
+```kotlin
+android {
+    defaultConfig {
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunnerArguments["clearPackageData"] = "true"
+    }
+    testOptions.execution = "ANDROIDX_TEST_ORCHESTRATOR"
+}
+
+dependencies {
+    androidTestUtil("androidx.test:orchestrator:1.6.1")
+}
+```
+
+The orchestrator lists the tests first, then runs each listed name in a process of its own, selected by
+name as described [above](#running-a-single-test). Only the **root tests** of a spec can be listed without
+running it, so the unit the orchestrator isolates is a root test: a root `context` runs as a whole in one
+process and shows up in the report as one test, with every failure inside it in the message. Tests that
+must share state — a spec-level variable, `beforeSpec` setup — belong in one root container.
 
 ## Instrumentation helpers
 
@@ -262,8 +303,12 @@ consuming project that minifies its `androidTest` variant needs nothing extra.
 **`Unable to find instrumentation info for ComponentInfo{…}`** — the test APK is not installed, or
 `testInstrumentationRunner` is not set to `androidx.test.runner.AndroidJUnitRunner`.
 
-**A filtered run reports `OK (0 tests)`** — the test name must be the *flattened* path, exactly as it
-appears in the report, including the ` -- ` separators and the spaces around them.
+**A selected test fails with `… has no test named '…'`** — the test name must be the *flattened* path,
+exactly as it appears in the report, including the ` -- ` separators and the spaces around them.
+
+**`Tests found` and `Tests run` differ** — in a run that does not select tests by name, only the root tests
+can be announced up front (see [Current limitations](#current-limitations)); nested tests are reported as
+they run. The report, not the announced count, is what to go by.
 
 ## Current limitations
 
@@ -275,10 +320,12 @@ Known gaps, roughly in the order they are worth closing:
   applied. Use their programmatic equivalents (`ActivityScenario.launch`, `instrumentation.uiAutomation`).
 - **No test-level annotation filtering.** `@LargeTest`, `@SdkSuppress`, `@RequiresDevice` and friends work
   at class level only — Kotest tests are not methods, so per-test annotations have nowhere to live.
-- **`getDescription()` instantiates the spec.** The spec body therefore runs once for discovery and once
-  for execution; keep expensive work out of the constructor and in `beforeSpec`.
-- **Orchestrator and sharding are untested.** Both go through the same `class` argument and should work,
-  but there is no coverage for them yet.
+- **Only root tests are known before a spec runs.** Whether a container holds tests or *is* one (a
+  `withData` row) shows only once its body runs, so the runner announces root tests and reports nested
+  ones as it discovers them. Hence the `Tests found` / `Tests run` mismatch in unfiltered runs, sharding
+  (`numShards`) that distributes root tests rather than leaves, and orchestrator isolation per root test.
+- **Discovery instantiates the spec.** The spec body therefore runs once for discovery and once for
+  execution; keep expensive work out of the constructor and in `beforeSpec`.
 
 Assertions for `View`/`TextView` are deliberately **not** provided: on a device, Espresso's
 `ViewMatchers` check what is actually displayed (visibility of parents, size, occlusion) and synchronise
@@ -289,11 +336,14 @@ with the UI thread, which a plain `view.visibility == VISIBLE` matcher cannot do
 ```
 kotest-android-runner/   the published Android library
 e2e-test/                an Android library whose androidTest sources exercise the runner on a device:
-                         context access, nested scopes, lifecycle callbacks, coroutines, ActivityScenario
+                         context access, nested scopes, data tests, lifecycle callbacks, coroutines,
+                         ActivityScenario — plus ReportingContractTest, which runs deliberately failing
+                         probe specs through the runner and checks every JUnit event it reports
 ```
 
 ```bash
 ./gradlew :e2e-test:connectedDebugAndroidTest        # run the e2e suite on an attached device
+./gradlew :e2e-test:connectedDebugAndroidTest -Pe2e.orchestrator   # the same, under the orchestrator
 ./gradlew detekt                                     # static analysis
 ./gradlew :kotest-android-runner:publishToMavenLocal # publish the AAR locally
 ```

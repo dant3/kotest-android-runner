@@ -14,62 +14,72 @@ import org.junit.runner.notification.RunNotifier
 /**
  * Translates Kotest engine callbacks into the JUnit 4 [RunNotifier] events that
  * `AndroidJUnitRunner` (and everything reading its output — Gradle, Android Studio, Firebase
- * Test Lab) understands.
+ * Test Lab, Android Test Orchestrator) understands.
  *
- * Kotest containers have no JUnit 4 equivalent, so they are not reported as tests. A container
- * that fails *before* producing any leaf would otherwise vanish from the report, so container
- * failures are reported as a synthetic test failure under the container's own description.
+ * JUnit 4 has no notion of a container, so what counts as a JUnit test is a Kotest test without
+ * children: every leaf, but also every container that turns out not to register anything — which is
+ * what a `withData` row is, its body being the test itself. Whether a container has children is only
+ * known once it finishes, so this listener keeps track of which tests turned out to be parents.
+ *
+ * Kotest delivers these callbacks one at a time (the launcher wraps listeners in a
+ * `ThreadSafeTestEngineListener`), so the state here needs no synchronisation.
  */
 @OptIn(KotestInternal::class)
-internal class AndroidTestEngineListener(
-    private val notifier: RunNotifier,
-    private val specClass: Class<*>,
+internal abstract class AndroidTestEngineListener(
+    protected val notifier: RunNotifier,
+    protected val specClass: Class<*>,
 ) : AbstractTestEngineListener() {
-    override suspend fun testStarted(testCase: TestCase) {
-        if (testCase.type == TestType.Container) return
-        notifier.fireTestStarted(describeTest(testCase))
+    private val parents = mutableSetOf<String>()
+
+    final override suspend fun testStarted(testCase: TestCase) {
+        markAsChild(testCase)
+        onStarted(testCase)
     }
 
-    override suspend fun testFinished(testCase: TestCase, result: TestResult) {
-        val description = describeTest(testCase)
-        when {
-            result is TestResult.Ignored -> fireIgnored(description, result.reason)
-            result.isErrorOrFailure -> fireFailure(description, result.errorOrNull, testCase.type)
-            testCase.type == TestType.Container -> Unit
-            else -> notifier.fireTestFinished(description)
-        }
+    final override suspend fun testIgnored(testCase: TestCase, reason: String?) {
+        if (reason == FILTERED_BY_INSTRUMENTATION) return
+        markAsChild(testCase)
+        onIgnored(testCase)
     }
 
-    override suspend fun testIgnored(testCase: TestCase, reason: String?) {
-        fireIgnored(describeTest(testCase), reason)
+    final override suspend fun testFinished(testCase: TestCase, result: TestResult) {
+        if (result is TestResult.Ignored) return testIgnored(testCase, result.reason)
+        val isTerminal = testCase.type != TestType.Container || !parents.remove(testCase.testPath)
+        onFinished(testCase, result, isTerminal)
     }
 
     override suspend fun specFinished(ref: SpecRef, result: TestResult) {
-        // A spec that blows up during instantiation or in beforeSpec never reports a test,
-        // so surface the failure against the spec itself.
-        val error = result.errorOrNull ?: return
-        val description = Description.createTestDescription(specClass.name, SPEC_FAILURE_NAME)
-        notifier.fireTestStarted(description)
-        notifier.fireTestFailure(Failure(description, error))
-        notifier.fireTestFinished(description)
+        // A spec that blows up during instantiation, in beforeSpec or in afterSpec may not report a
+        // test at all, so surface the failure against the spec itself.
+        result.errorOrNull?.let { reportFailure(describeTest(specClass, SPEC_FAILURE_NAME), it) }
     }
 
     override suspend fun specIgnored(kclass: KClass<*>, reason: String?) {
         notifier.fireTestIgnored(describeSpec(specClass))
     }
 
-    private fun fireIgnored(description: Description, reason: String?) {
-        if (reason == FILTERED_BY_INSTRUMENTATION) return
-        notifier.fireTestIgnored(description)
-    }
+    protected abstract fun onStarted(testCase: TestCase)
 
-    private fun fireFailure(description: Description, error: Throwable?, type: TestType) {
-        if (type == TestType.Container) notifier.fireTestStarted(description)
-        notifier.fireTestFailure(Failure(description, error ?: IllegalStateException("Test failed without an error")))
+    protected abstract fun onIgnored(testCase: TestCase)
+
+    /** [isTerminal] tells whether [testCase] had no children, i.e. whether it is a test in JUnit's eyes. */
+    protected abstract fun onFinished(testCase: TestCase, result: TestResult, isTerminal: Boolean)
+
+    protected fun describe(testPath: String): Description = describeTest(specClass, testPath)
+
+    /** A complete started / failed / finished sequence, for a test that was not reported as started. */
+    protected fun reportFailure(description: Description, error: Throwable) {
+        notifier.fireTestStarted(description)
+        notifier.fireTestFailure(Failure(description, error))
         notifier.fireTestFinished(description)
     }
 
-    private companion object {
-        const val SPEC_FAILURE_NAME = "spec initialization"
+    private fun markAsChild(testCase: TestCase) {
+        testCase.parent?.let { parents += it.testPath }
+    }
+
+    protected companion object {
+        fun TestResult.errorOrFailure(): Throwable? =
+            if (isErrorOrFailure) errorOrNull ?: IllegalStateException("Test failed without an error") else null
     }
 }
