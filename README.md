@@ -261,16 +261,23 @@ is the test. What that means in practice:
   activity — does it once more, in the listing process. With `clearPackageData` the orchestrator wipes that
   before the first test; without it, the leftovers are visible to the tests.
 - **A container that cannot be listed runs as one test.** If its body fails outside the spec's lifecycle
-  (it reads something `beforeSpec` sets up), takes longer than 10 seconds, registers two tests with the
-  same name, or is disabled, the container is listed as a whole: it runs in one process and is reported as
-  one test, with every failure inside it in the message. Nothing is lost, only isolation is coarser.
+  (it reads something `beforeSpec` sets up) or takes longer than 10 seconds, the container is listed as a
+  whole: it runs in one process and is reported as one test, with every failure inside it in the message.
+  Nothing is lost, only isolation is coarser — and it is not silent: the runner logs a warning with the
+  reason under the `KotestAndroidRunner` tag while listing, and again when the container runs, where it
+  lands in the test's own logcat that AGP keeps next to its result. Disabled containers are listed whole
+  too, which costs nothing: they are reported as one ignored test. Duplicate test names are listed as the
+  engine renames them (`(1) name`), unless `DuplicateTestNameMode.Error` makes them fail anyway.
 - **Listed names must be reproducible.** A test name that changes between processes — `withData` over
   random or time-dependent values — is not found when the orchestrator asks for it, and fails with
   `… has no test named '…'`.
 - **Tests must not depend on each other.** Each one runs in a fresh process, with only its parent
   containers' bodies and callbacks run before it.
-- **A process per row has a cost.** The spec constructor, `beforeSpec` and the enclosing containers run
-  again for every row; a table of a hundred rows is a hundred instrumentation runs.
+- **A process per row has a cost: around half a second per test on an emulator**, on top of the test
+  itself — 20 rows take some 10 seconds, 100 rows about a minute. The spec constructor, `beforeSpec` and
+  the enclosing containers run again for every row. The report understates this: the time of a test, and
+  so of a `testsuite` in the XML, covers only the test itself, not the process around it; the real cost
+  shows in the `testsuites` total and in the duration of the Gradle task.
 
 Only listing for the orchestrator (`listTestsForOrchestrator`) or a dry run (`-e log true`, which tools like
 Marathon use to list tests) expands containers; an ordinary run does not.
@@ -336,8 +343,13 @@ consuming project that minifies its `androidTest` variant needs nothing extra.
 **`Unable to find instrumentation info for ComponentInfo{…}`** — the test APK is not installed, or
 `testInstrumentationRunner` is not set to `androidx.test.runner.AndroidJUnitRunner`.
 
-**A selected test fails with `… has no test named '…'`** — the test name must be the *flattened* path,
-exactly as it appears in the report, including the ` -- ` separators and the spaces around them.
+**A selected test fails with `… has no test named '…'`** — under the orchestrator, the test got a different
+name when it ran than when it was listed: names must be the same in every process, which `withData` over
+random or time-dependent values is not. Typed by hand, the name must be the *flattened* path, exactly as it
+appears in the report, including the ` -- ` separators and the spaces around them.
+
+**A green run prints `INSTRUMENTATION_CODE: -1`** — that is `Activity.RESULT_OK`, the instrumentation
+finishing normally; it says nothing about the tests. A failed run shows `FAILURES!!!` and the failure count.
 
 **`Tests found` and `Tests run` differ** — in a run that does not select tests by name, only the root tests
 can be announced up front (see [Current limitations](#current-limitations)); nested tests are reported as

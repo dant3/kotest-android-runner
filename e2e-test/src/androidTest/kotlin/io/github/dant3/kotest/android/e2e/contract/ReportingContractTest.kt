@@ -1,6 +1,7 @@
 package io.github.dant3.kotest.android.e2e.contract
 
 import android.os.Bundle
+import android.os.Process
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.dant3.kotest.android.KotestAndroidRunner
 import io.github.dant3.kotest.android.instrumentation
@@ -122,6 +123,7 @@ class ReportingContractTest : FunSpec({
             val run = run(MixedSpec::class, "no such test")
             run.failed shouldContainExactly listOf("no such test")
             run.failures.single().message shouldContain "has no test named 'no such test'"
+            run.failures.single().message shouldContain "test names must be the same in every run"
         }
 
         test("a listed withData row runs alone and is reported under its own name") {
@@ -162,11 +164,31 @@ class ReportingContractTest : FunSpec({
             listed(ContainerFailingEarlySpec::class) shouldContainExactly listOf("broken")
         }
 
-        test("a container listed whole still runs every test inside it") {
+        test("a container listed whole says so in logcat, with the reason") {
+            listed(NeedsBeforeSpecSpec::class)
+            runnerWarnings() shouldContain "'cases from beforeSpec' in ${NeedsBeforeSpecSpec::class.java.name} is " +
+                "listed as one test, so the tests inside it share one process and one result: its body failed " +
+                "outside the spec lifecycle"
+        }
+
+        test("a container listed whole still runs every test inside it, and says so in logcat") {
             run(NeedsBeforeSpecSpec::class, "cases from beforeSpec").passed shouldContainExactly
                 listOf("cases from beforeSpec")
             Executions.of("case 1") shouldBe 1
             Executions.of("case 2") shouldBe 1
+            runnerWarnings() shouldContain "'cases from beforeSpec' was selected as a whole: the 2 tests inside it"
+        }
+
+        test("duplicate names are listed as the engine renames them, and each runs alone") {
+            listed(DuplicateNamesSpec::class) shouldContainExactly listOf("dups -- same", "dups -- (1) same")
+            run(DuplicateNamesSpec::class, "dups -- (1) same").passed shouldContainExactly listOf("dups -- (1) same")
+            Executions.of("first same") shouldBe 0
+            Executions.of("second same") shouldBe 1
+        }
+
+        test("duplicate names under DuplicateTestNameMode.Error keep the container whole") {
+            listed(StrictDuplicateNamesSpec::class) shouldContainExactly listOf("dups")
+            runnerWarnings() shouldContain "registers the test name 'same' twice under DuplicateTestNameMode.Error"
         }
 
         test("a plain run still announces root tests only") {
@@ -217,6 +239,16 @@ private fun run(
 private fun listed(spec: KClass<out Spec>): List<String> = withArguments("class" to null, "listTestsForOrchestrator" to "true") {
     KotestAndroidRunner(spec.java).description.children.map { it.methodName }
 }
+
+/** Warnings the runner has logged in this process so far. */
+private fun runnerWarnings(): String =
+    ProcessBuilder("logcat", "-d", "-s", "$LOG_TAG:W", "--pid=${Process.myPid()}")
+        .start()
+        .inputStream
+        .bufferedReader()
+        .use { it.readText() }
+
+private const val LOG_TAG = "KotestAndroidRunner"
 
 private fun <T> withClassArgument(classArgument: String?, block: () -> T): T = withArguments("class" to classArgument, block = block)
 

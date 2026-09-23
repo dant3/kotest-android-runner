@@ -71,8 +71,11 @@ internal class RequestedTestReporter(
                 else -> reportFailure(
                     description,
                     AssertionError(
-                        "${specClass.name} has no test named '${outcome.path}'. Nested test names are the Kotest " +
-                            "test path joined with '$TEST_PATH_SEPARATOR'.",
+                        "${specClass.name} has no test named '${outcome.path}'. If the name came from a test " +
+                            "listing (Android Test Orchestrator), the test is named differently in this process " +
+                            "than when it was listed: test names must be the same in every run, which withData " +
+                            "over random or time-dependent values is not. If it was typed by hand, nested test " +
+                            "names are the Kotest test path joined with '$TEST_PATH_SEPARATOR'.",
                     ),
                 )
             }
@@ -94,6 +97,14 @@ internal class RequestedTestReporter(
         }
         notifier.fireTestFinished(description)
         outcome.reported = true
+        val inside = outcome.executed + outcome.ignored
+        if (inside > 0) {
+            logWarning(
+                "'${outcome.path}' was selected as a whole: the $inside tests inside it ran in this one process " +
+                    "and are reported as one test. If the name came from the orchestrator's listing, the " +
+                    "listing's log says why the container was not expanded.",
+            )
+        }
     }
 
     private class Outcome(val path: String) {

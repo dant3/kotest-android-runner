@@ -1,5 +1,6 @@
 package io.github.dant3.kotest.android.e2e.contract
 
+import io.kotest.core.names.DuplicateTestNameMode
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.datatest.withData
 import io.kotest.matchers.shouldBe
@@ -90,5 +91,21 @@ class NeedsBeforeSpecSpec : FunSpec({
                 Executions.record("case $case")
             }
         }
+    }
+})
+
+class DuplicateNamesSpec : FunSpec({
+    context("dups") {
+        test("same") { Executions.record("first same") }
+        test("same") { Executions.record("second same") }
+    }
+})
+
+class StrictDuplicateNamesSpec : FunSpec({
+    duplicateTestNameMode = DuplicateTestNameMode.Error
+
+    context("dups") {
+        test("same") { }
+        test("same") { }
     }
 })
