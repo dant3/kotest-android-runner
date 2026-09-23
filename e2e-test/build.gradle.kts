@@ -7,6 +7,18 @@ plugins {
 // test, each selected by name — which exercises a different reporting path than a plain run.
 val useOrchestrator = providers.gradleProperty("e2e.orchestrator").isPresent
 
+// `-Pkotest.version=6.+` runs the suite against another Kotest than the runner was built with —
+// which is what a consumer on a newer Kotest does, the runner exposing Kotest through `api`.
+providers.gradleProperty("kotest.version").orNull?.let { kotestVersion ->
+    configurations.configureEach {
+        if (name.contains("AndroidTest")) {
+            resolutionStrategy.eachDependency {
+                if (requested.group == "io.kotest") useVersion(kotestVersion)
+            }
+        }
+    }
+}
+
 android {
     namespace = "io.github.dant3.kotest.android.e2e"
     compileSdk = libs.versions.androidCompileSdk.get().toInt()

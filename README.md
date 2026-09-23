@@ -1,7 +1,7 @@
 # kotest-android-runner
 
 [![JitPack](https://jitpack.io/v/dant3/kotest-android-runner.svg)](https://jitpack.io/#dant3/kotest-android-runner)
-[![Kotest](https://img.shields.io/badge/Kotest-6.2.4-blue?logo=kotlin)](https://kotest.io/)
+[![Kotest](https://img.shields.io/badge/Kotest-6.2.5-blue?logo=kotlin)](https://kotest.io/)
 [![AndroidX Test](https://img.shields.io/badge/AndroidX%20Test-1.7.0-green?logo=android)](https://developer.android.com/training/testing)
 [![License](https://img.shields.io/badge/License-Apache%202.0-lightgrey)](LICENSE)
 
@@ -107,7 +107,7 @@ The version slot accepts any of:
 > resolve, the authoritative snippet is always on the
 > [JitPack page](https://jitpack.io/#dant3/kotest-android-runner) under the version's *"Get it"* button.
 
-Requires JDK 17+ to consume, `minSdk 23`, and Kotest 6.x. A release is built by JitPack on first
+Requires JDK 17+ to consume, `minSdk 23`, and Kotest 6.2 or newer. A release is built by JitPack on first
 request, so the very first resolution of a new tag can take a couple of minutes.
 
 ## Quick start
@@ -393,6 +393,11 @@ e2e-test/                an Android library whose androidTest sources exercise t
 ./gradlew detekt                                     # static analysis
 ./gradlew :kotest-android-runner:publishToMavenLocal # publish the AAR locally
 ```
+
+CI runs detekt and the build on every pull request. The e2e suite needs an emulator; it runs once a
+maintainer approves it (the `e2e` environment), in four configurations: plain and under the orchestrator,
+each against the Kotest the runner is built with and against the latest Kotest 6 (`-Pkotest.version=6.+`),
+which is informational — a new Kotest release should not block unrelated pull requests.
 
 A release is cut by pushing a tag; JitPack builds it on first request using `jitpack.yml`.
 
