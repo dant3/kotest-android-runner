@@ -1,6 +1,6 @@
 [versions]
 kotlinVersion = "2.2.21"
-kotestVersion = "6.2.4"
+kotestVersion = "6.2.5"
 junit4Version = "4.13.2"
 androidxTestCore = "1.7.0"
 androidxTestMonitor = "1.8.0"
